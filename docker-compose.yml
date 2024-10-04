@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  satisfactory-bot:
+    build: .
+    environment:
+      - LOG_PATH=/app/logs/FactoryGame.log
+      - DISCORD_TOKEN=MTaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      - SERVER_ADDRESS=aaaaaaa.com
+      - SERVER_PORT=7777
+      - DISCORD_CHANNEL_ID=12343254364
+      - MAX_PLAYERS=4
+    volumes:
+      - my_logs/FactoryGame.log:/app/logs/FactoryGame.log

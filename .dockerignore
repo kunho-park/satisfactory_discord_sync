@@ -1,0 +1,5 @@
+.env
+satisfactory_tracer.log
+satisfactory.db
+docker-compose.override.yml
+__pycache__
