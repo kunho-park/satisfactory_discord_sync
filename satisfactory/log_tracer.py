@@ -9,7 +9,7 @@ from .utils import *
 import logging
 import asyncio, nest_asyncio
 from discord import Client
-import discord
+import discord, traceback
 
 nest_asyncio.apply()
 
@@ -30,9 +30,9 @@ class LogFileHandler:
                 async with aiofiles.open(
                     self.log_file_path, mode="r", encoding="utf-8"
                 ) as f:
-                    await f.seek(self.last_position)  
+                    await f.seek(self.last_position)
                     lines = await f.readlines()
-                    self.last_position = await f.tell()  
+                    self.last_position = await f.tell()
             except:
                 self.last_position = 0
                 logger.error(f"Log file not found: {self.log_file_path}")
@@ -43,7 +43,7 @@ class LogFileHandler:
                     await self.process_callback(line)
                 except Exception as e:
                     logger.error(f"Error processing line: {line}")
-                    logger.error(e)
+                    logger.error(traceback.format_exc())
 
             await asyncio.sleep(0.1)
 
@@ -204,6 +204,17 @@ class LogTracer:
 
     async def process(self, data):
         server = await get_server_by_address_and_port(self.address, self.port)
+        if server is None:
+            server = {
+                "address": self.address,
+                "port": self.port,
+                "name": "?",
+                "online": False,
+                "version": "?",
+                "processedTimestamp": 0,
+                "startTimestamp": 0,
+            }
+            await save_server(server)
 
         if server["processedTimestamp"] >= data["timestamp"]:
             logger.debug(f"Pass / Type: {data['type']}")
