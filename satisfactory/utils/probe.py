@@ -4,6 +4,8 @@ import time
 
 from enum import Enum, auto
 
+import traceback
+
 
 class GameState(Enum):
     UNKNOWN = auto()
@@ -105,6 +107,7 @@ async def probe(address="127.0.0.1", port=7777, timeout=10):
 
         raise Exception("Unexpected response")
     except:
+        print(traceback.format_exc())
         return None
     finally:
         transport.close()

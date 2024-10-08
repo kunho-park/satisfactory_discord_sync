@@ -9,4 +9,5 @@ services:
       - DISCORD_CHANNEL_ID=12343254364
       - MAX_PLAYERS=4
     volumes:
-      - my_logs/FactoryGame.log:/app/logs/FactoryGame.log
+      - my_satisfactory_server/config/gamefiles/FactoryGame/Saved/Logs:/app/logs:ro
+    restart: unless-stopped

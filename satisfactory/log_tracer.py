@@ -10,6 +10,7 @@ import logging
 import asyncio, nest_asyncio
 from discord import Client
 import discord, traceback
+import os
 
 nest_asyncio.apply()
 
@@ -53,14 +54,14 @@ db_path = "./db.json"
 logFileOpenRegex = re.compile(r"\[(.+?)\]\[.+\]Log file open, (.*)$")
 logFileCommandLineRegex = re.compile(r"^LogInit: Command Line: (.*)$")
 loginRequestRegex = re.compile(
-    r"^\[(.+?)\]\[.+\]LogNet: Login request: .*\?Name=(.*?)? userId: (.*)? platform: (.*)?$"
+    r"^\[(.+?)\]\[.+\]LogNet: Login request: .*\?Name=(.*?)? userId: (.*)?:[0-9]+ \(ForeignId=\[Type=[0-9]+ Handle=[0-9]+ RepData=\[(.*)\]\) platform: .*$"
 )
 joinRequestRegex = re.compile(
     r"^\[(.+?)\]\[.+\]LogNet: Join request: .*\?Name=(.*?)?\?SplitscreenCount=.*$"
 )
 joinSucceededRegex = re.compile(r"^\[(.+?)\]\[.+\]LogNet: Join succeeded: (.*?)?$")
 connectionCloseRegex = re.compile(
-    r"^\[(.+?)\]\[.+\]LogNet: UNetConnection::Close: .*, Driver: GameNetDriver .*, UniqueId: (.*?),.*$"
+    r"^\[(.+?)\]\[.+\]LogNet: UNetConnection::Close: .*, Driver: GameNetDriver .*, UniqueId: (.*)?:[0-9]+ \(ForeignId=\[Type=[0-9]+ Handle=[0-9]+ RepData=\[(.*)\]\),.*$"
 )
 
 invalid_unknown_names_and_ids = ["INVALID", "UNKNOWN"]
@@ -83,22 +84,25 @@ class LogTracer:
         self.address = address
         self.port = port
         self.url = f"satisfactory://{self.address}:{self.port}"
-        self.timeout = 1000
+        self.http_api = HttpApi(self.address, self.port)
         self.loop = loop
 
         self.client = client
         self.channel = channel
         self.max_players = max_players
 
-    async def start(self):
-        self.event_handler = LogFileHandler(
-            self.process_callback, self.log_file_path, loop=self.loop
-        )
+        self.http_login_success = False
 
+    async def start(self):
         self.channel = await self.client.fetch_channel(self.channel)
         logger.info(f"Connected Discord Channel: {self.channel}")
 
         await self.update_server_info()
+
+        self.event_handler = LogFileHandler(
+            self.process_callback, self.log_file_path, loop=self.loop
+        )
+
         asyncio.create_task(self.check_server_online())
 
     async def process_callback(self, line):
@@ -109,8 +113,8 @@ class LogTracer:
     async def uptime(self):
         server = await get_server_by_address_and_port(self.address, self.port)
         if server["online"] == False:
-            return f"{format_timestamp(time.time() * 1000 - server['startTimestamp'])} 동안 오프라인"
-        return f"{format_timestamp(time.time() * 1000 - server['startTimestamp'])} 동안 온라인"
+            return f"{format_timestamp((time.time() * 1000) - server['startTimestamp'])} 동안 오프라인"
+        return f"{format_timestamp((time.time() * 1000) - server['startTimestamp'])} 동안 온라인"
 
     async def rank_str(self):
         rank_players = await rank_player_by_total_join_time(self.url)
@@ -145,16 +149,40 @@ class LogTracer:
             }
             await save_server(server)
 
-        probe_data = await probe(
-            address=self.address, port=self.port, timeout=self.timeout
-        )
+        if self.http_login_success == False:
+            try:
+                await self.http_api.login(os.getenv("ADMIN_PASSWORD"))
+                self.http_login_success = True
+            except:
+                self.http_login_success = False
+                logger.error("Failed to login to the HTTP API")
 
-        if probe_data is None:
+        try:
+            health_check_response = await self.http_api.health_check()
+        except:
+            health_check_response = None
+
+        if health_check_response is not None:
+            health_check = health_check_response.data["health"] == "healthy"
+        else:
+            health_check = False
+
+        server_name = "?"
+        server_version = "?"
+        averageTickRate = "?"
+        techTier = "?"
+        totalGameDuration = "?"
+
+        if health_check == False:
             if server["online"] == True:
                 embed = discord.Embed(
                     title=f":robot: **{self.address}:{self.port}** 서버 꺼짐",
                     color=0xFF0000,
                 )
+                embed.set_footer(
+                    text=f"시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+
                 await self.channel.send(embed=embed)
                 server["online"] = False
                 await save_server(server)
@@ -164,21 +192,43 @@ class LogTracer:
             logger.error(f"Probe failed for {self.address}:{self.port}")
             await set_all_player_offline(self.url)
             return
-        elif server["online"] == False:
+        elif server["online"] == False and health_check == True:
+
+            probe_data = await probe(address=self.address, port=self.port, timeout=180)
+
+            server_info = await self.http_api.query_server_state()
+            server_info = server_info.data["serverGameState"]
+
+            if probe_data is not None:
+                server_name = probe_data["serverName"]
+                server_version = probe_data["serverVersion"]
+
+            if server_info is not None:
+                averageTickRate = round(server_info["averageTickRate"], 2)
+                techTier = server_info["techTier"]
+                totalGameDuration = format_timestamp(
+                    server_info["totalGameDuration"] * 1000
+                )
+
+                self.max_players = server_info["playerLimit"]
+
             server["startTimestamp"] = int(time.time() * 1000)
+
             embed = discord.Embed(
                 title=f":robot: **{self.address}:{self.port}** 서버 켜짐",
                 color=0x00FF00,
             )
+            embed.add_field(name="서버 이름", value=server_name, inline=True)
+            embed.add_field(name="서버 버전", value=server_version, inline=True)
             embed.add_field(
-                name="서버 이름",
-                value=probe_data["serverName"],
-                inline=True,
+                name="평균 틱 레이트", value=f"{averageTickRate:.2f}", inline=True
             )
-            embed.add_field(
-                name="서버 버전", value=probe_data["serverVersion"], inline=True
-            )
+            embed.add_field(name="기술 티어", value=f"{techTier} 티어", inline=True)
+            embed.add_field(name="총 게임 시간", value=totalGameDuration, inline=True)
 
+            embed.set_footer(
+                text=f"시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
             await self.channel.send(embed=embed)
             server["online"] = True
             await save_server(server)
@@ -186,9 +236,9 @@ class LogTracer:
         server = {
             "address": self.address,
             "port": self.port,
-            "name": probe_data["serverName"],
+            "name": server_name,
             "online": True,
-            "version": probe_data["serverVersion"],
+            "version": server_version,
             "processedTimestamp": server["processedTimestamp"],
             "startTimestamp": server["startTimestamp"],
         }
@@ -216,11 +266,11 @@ class LogTracer:
             }
             await save_server(server)
 
-        if server["processedTimestamp"] >= data["timestamp"]:
-            logger.debug(f"Pass / Type: {data['type']}")
+        if 1728321679054.0 >= data["timestamp"]:
+            logger.debug(f"Pass / [{data['timestamp']}] Type: {data['type']}")
             return
 
-        logger.debug(f"Process / Type: {data['type']}")
+        logger.debug(f"Process / [{data['timestamp']}] Type: {data['type']}")
         if data.get("userId") is not None:
             player = await get_player_url_and_user_id(self.url, data["userId"])
             if player is None:
@@ -246,15 +296,15 @@ class LogTracer:
             return
 
         if data["type"] == "Log file open":
-
             await set_all_player_offline(self.url)
         elif data["type"] == "Command line":
             pass
         elif data["type"] == "Login request":
             pass
         elif data["type"] == "Join request":
-            player["lastJoinTimestamp"] = data["timestamp"]
+            pass
         elif data["type"] == "Join succeeded":
+            player["lastJoinTimestamp"] = data["timestamp"]
             player["joined"] += 1
             player["online"] = True
             await save_player(player)
@@ -269,7 +319,7 @@ class LogTracer:
                 value=(
                     "\n".join(
                         [
-                            f"{idx:02d}. {player['name']}"
+                            f"{idx:02d}. {player['name']} ({player['platform']})"
                             for idx, player in enumerate(online_players, start=1)
                         ]
                     )
@@ -287,8 +337,9 @@ class LogTracer:
             player["online"] = False
 
             connected_timestamp = data["timestamp"] - player["lastJoinTimestamp"]
-            player["totalJoinTime"] += connected_timestamp
-
+            if connected_timestamp > 0:
+                player["totalJoinTime"] += connected_timestamp
+                await save_player(player)
             online_players = await get_online_players(self.url)
 
             embed = discord.Embed(
@@ -297,12 +348,16 @@ class LogTracer:
             )
             embed.add_field(
                 name=f"플레이 시간",
-                value=(f"{format_timestamp(connected_timestamp)}"),
+                value=(
+                    f"{format_timestamp(connected_timestamp)}"
+                    if connected_timestamp > 0
+                    else "?"
+                ),
                 inline=True,
             )
             embed.add_field(
                 name=f"총 플레이 시간",
-                value=(f"{format_timestamp(player['totalJoinTime']) }"),
+                value=f"{format_timestamp(player['totalJoinTime'])}",
                 inline=True,
             )
             embed.add_field(
@@ -310,7 +365,7 @@ class LogTracer:
                 value=(
                     "\n".join(
                         [
-                            f"{idx:02d}. {player['name']}"
+                            f"{idx:02d}. {player['name']} ({player['platform']})"
                             for idx, player in enumerate(online_players, start=1)
                         ]
                     )
@@ -349,8 +404,8 @@ class LogTracer:
                         "type": "Login request",
                         "timestamp": parse_timestamp(m.group(1)),
                         "name": m.group(2),
-                        "userId": m.group(3),
-                        "platform": m.group(4),
+                        "platform": m.group(3),
+                        "userId": m.group(4),
                     }
                     if parse_timestamp(m.group(1)) is not None
                     else None
@@ -386,7 +441,8 @@ class LogTracer:
                     {
                         "type": "Connection close",
                         "timestamp": parse_timestamp(m.group(1)),
-                        "userId": m.group(2),
+                        "platform": m.group(2),
+                        "userId": m.group(3),
                     }
                     if parse_timestamp(m.group(1)) is not None
                     else None

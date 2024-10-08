@@ -192,7 +192,8 @@ async def get_online_players(address):
         cursor = await conn.cursor()
 
         await cursor.execute(
-            "SELECT * FROM players WHERE url = ? AND online = TRUE", (address,)
+            "SELECT * FROM players WHERE url = ? AND online = TRUE ORDER BY name",
+            (address,),
         )
         players = await cursor.fetchall()
         return [player_to_dict(player) for player in players] if players else []

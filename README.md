@@ -36,7 +36,7 @@
          - DISCORD_CHANNEL_ID=your_discord_channel_id
          - MAX_PLAYERS=maximum_number_of_players
        volumes:
-         - my_logs/FactoryGame.log:/app/logs/FactoryGame.log
+         - my_satisfactory_server/config/gamefiles/FactoryGame/Saved/Logs:/app/logs:ro
    ```
 3. **도커(Docker) 사용**
 
