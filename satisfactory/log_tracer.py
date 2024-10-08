@@ -266,7 +266,7 @@ class LogTracer:
             }
             await save_server(server)
 
-        if 1728321679054.0 >= data["timestamp"]:
+        if server["processedTimestamp"] >= data["timestamp"]:
             logger.debug(f"Pass / [{data['timestamp']}] Type: {data['type']}")
             return
 
