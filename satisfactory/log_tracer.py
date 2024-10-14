@@ -1,18 +1,20 @@
 import asyncio
-import time
-from datetime import datetime, timedelta
-import aiofiles
+import logging
+import os
 import re
+import time
+import traceback
+from datetime import datetime, timedelta
+
+import aiofiles
+import discord
+import nest_asyncio
+from discord import Client
+
 from .database import *
 from .utils import *
 
-import logging
-import asyncio, nest_asyncio
-from discord import Client
-import discord, traceback
-import os
-
-nest_asyncio.apply()
+nest_asyncio.apply()  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ class LogFileHandler:
                     await f.seek(self.last_position)
                     lines = await f.readlines()
                     self.last_position = await f.tell()
-            except:
+            except Exception:
                 self.last_position = 0
                 logger.error(f"Log file not found: {self.log_file_path}")
                 await asyncio.sleep(5)
@@ -42,7 +44,7 @@ class LogFileHandler:
             for line in lines:
                 try:
                     await self.process_callback(line)
-                except Exception as e:
+                except Exception:
                     logger.error(f"Error processing line: {line}")
                     logger.error(traceback.format_exc())
 
@@ -121,7 +123,19 @@ class LogTracer:
 
         def format_number(number, length):
             if length <= 10:
-                emojis = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+                emojis = [
+                    "0️⃣",
+                    "1️⃣",
+                    "2️⃣",
+                    "3️⃣",
+                    "4️⃣",
+                    "5️⃣",
+                    "6️⃣",
+                    "7️⃣",
+                    "8️⃣",
+                    "9️⃣",
+                    "🔟",
+                ]
                 if 0 <= number <= 10:
                     return emojis[number]
             else:
@@ -179,14 +193,24 @@ class LogTracer:
                     title=f":robot: **{self.address}:{self.port}** 서버 꺼짐",
                     color=0xFF0000,
                 )
+                embed.add_field(
+                    name="가동 시간", value=await self.uptime(), inline=True
+                )
                 embed.set_footer(
                     text=f"시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
-
-                await self.channel.send(embed=embed)
+                try:
+                    await self.channel.send(embed=embed)
+                except:
+                    logger.error(
+                        f"Failed to send message to Discord channel {self.channel}"
+                    )
                 server["online"] = False
                 await save_server(server)
-                self.event_handler.last_position = 0
+                try:
+                    self.event_handler.last_position = 0
+                except:
+                    pass
                 server["startTimestamp"] = int(time.time() * 1000)
 
             logger.error(f"Probe failed for {self.address}:{self.port}")
@@ -229,7 +253,12 @@ class LogTracer:
             embed.set_footer(
                 text=f"시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             )
-            await self.channel.send(embed=embed)
+            try:
+                await self.channel.send(embed=embed)
+            except:
+                logger.error(
+                    f"Failed to send message to Discord channel {self.channel}"
+                )
             server["online"] = True
             await save_server(server)
 
@@ -332,7 +361,12 @@ class LogTracer:
             embed.set_footer(
                 text=f"접속한 시간: {(datetime.fromtimestamp(data['timestamp'] / 1000) + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')}"
             )
-            await self.channel.send(embed=embed)
+            try:
+                await self.channel.send(embed=embed)
+            except:
+                logger.error(
+                    f"Failed to send message to Discord channel {self.channel}"
+                )
         elif data["type"] == "Connection close":
             player["online"] = False
 
@@ -378,7 +412,12 @@ class LogTracer:
                 text=f"접속 종료 시간: {(datetime.fromtimestamp(data['timestamp'] / 1000) + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M:%S')}"
             )
 
-            await self.channel.send(embed=embed)
+            try:
+                await self.channel.send(embed=embed)
+            except:
+                logger.error(
+                    f"Failed to send message to Discord channel {self.channel}"
+                )
 
         if player is not None:
             await save_player(player)

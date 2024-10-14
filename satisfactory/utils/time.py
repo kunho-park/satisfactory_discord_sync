@@ -18,7 +18,7 @@ def parse_timestamp(timestamp_str):
 
 
 def format_timestamp(timestamp):
-    total_seconds = int(timestamp / 1000)
+    total_seconds = int(int(timestamp) / 1000)
     hours, remainder = divmod(total_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
 

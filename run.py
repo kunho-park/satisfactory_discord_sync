@@ -8,10 +8,10 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SERVER_ADDRESS = os.getenv("SERVER_ADDRESS")
-SERVER_PORT = int(os.getenv("SERVER_PORT"))
+SERVER_PORT = int(os.getenv("SERVER_PORT"))  # type: ignore
 LOG_PATH = os.getenv("LOG_PATH")
-DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))
-MAX_PLAYERS = int(os.getenv("MAX_PLAYERS"))
+DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID"))  # type: ignore
+MAX_PLAYERS = int(os.getenv("MAX_PLAYERS"))  # type: ignore
 logging.getLogger("satisfactory.log_tracer").setLevel(logging.DEBUG)
 
 logging.basicConfig(

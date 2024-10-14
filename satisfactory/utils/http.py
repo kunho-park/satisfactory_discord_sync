@@ -1,7 +1,6 @@
-from asgiref.sync import async_to_sync, sync_to_async
+from asgiref.sync import sync_to_async
 from satisfactory_api_client import SatisfactoryAPI
 from satisfactory_api_client.data import MinimumPrivilegeLevel
-import os
 
 
 class HttpApi:

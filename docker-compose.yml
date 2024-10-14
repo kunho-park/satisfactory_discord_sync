@@ -8,6 +8,7 @@ services:
       - SERVER_PORT=7777
       - DISCORD_CHANNEL_ID=12343254364
       - MAX_PLAYERS=4
+      - ADMIN_PASSWORD=satisfactory server admin password
     volumes:
       - my_satisfactory_server/config/gamefiles/FactoryGame/Saved/Logs:/app/logs:ro
     restart: unless-stopped
